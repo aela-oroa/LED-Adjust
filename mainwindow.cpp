@@ -36,9 +36,9 @@ MainWindow::~MainWindow()
 }
 
 // Create command for serial communication
-QString MainWindow::createCommand(const QString &code, int value)
+QString MainWindow::createCommand(int address, int value)
 {
-    return QString("S 10 %1 %2 P").arg(code).arg(value, 0, 16); // Converts value to hex
+    return QString("S 10 %1 %2 P").arg(address, 0, 16).arg(value, 0, 16);  // Address is now an int
 }
 
 // Send list of commands to serial port
@@ -97,13 +97,13 @@ void MainWindow::on_brightnessHorizontalSlider_valueChanged(int value)
     QStringList commands;
     switch (newValue) {
     case 0:
-        commands = {createCommand("AF", 0xFF), createCommand("AA", 0xFF), createCommand("B3", 0xFF)};
+        commands = {createCommand(0xAF, 0xFF), createCommand(0xAA, 0xFF), createCommand(0xB3, 0xFF)};
         break;
     case 50:
-        commands = {createCommand("AF", 0x8), createCommand("AA", 0x8), createCommand("B3", 0x8)};
+        commands = {createCommand(0xAF, 0x8), createCommand(0xAA, 0x8), createCommand(0xB3, 0x8)};
         break;
     case 100:
-        commands = {createCommand("AF", 0), createCommand("AA", 0), createCommand("B3", 0)};
+        commands = {createCommand(0xAF, 0), createCommand(0xAA, 0), createCommand(0xB3, 0)};
         break;
     default:
         qDebug() << "Unsupported value.";
@@ -118,11 +118,11 @@ void MainWindow::on_powerPushButton_toggled(bool checked)
 {
     QStringList commands = checked
                                ? QStringList{
-                                   createCommand("37", 0x10), createCommand("38", 0xFE), createCommand("39", 0x9D),
-                                   createCommand("3A", 0x08), createCommand("AF", 0x0), createCommand("AA", 0x0), createCommand("B3", 0x0)
+                                   createCommand(0x37, 0x10), createCommand(0x38, 0xFE), createCommand(0x39, 0x9D),
+                                   createCommand(0x3A, 0x08), createCommand(0xAF, 0x0), createCommand(0xAA, 0x0), createCommand(0xB3, 0x0)
                                }
                                : QStringList{
-                                   createCommand("37", 0x0), createCommand("38", 0x0), createCommand("39", 0x0), createCommand("3A", 0x0)
+                                   createCommand(0x37, 0x0), createCommand(0x38, 0x0), createCommand(0x39, 0x0), createCommand(0x3A, 0x0)
                                };
 
     ui->powerPushButton->setText(checked ? "OFF" : "ON");
@@ -145,9 +145,9 @@ void MainWindow::on_selectColourPushButton_clicked()
     qDebug() << "Red Value:" << red_value << "Green Value:" << green_value << "Blue Value:" << blue_value;
 
     QStringList commands = {
-        createCommand("AF", red_value),
-        createCommand("AA", green_value),
-        createCommand("B3", blue_value)
+        createCommand(0xAF, red_value),
+        createCommand(0xAA, green_value),
+        createCommand(0xB3, blue_value)
     };
 
     sendCommandsToSerialPort(commands);

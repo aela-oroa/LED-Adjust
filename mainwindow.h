@@ -19,7 +19,7 @@ public:
     ~MainWindow();
 
 private slots:
-    QString createCommand(const QString &code, int value);
+    QString createCommand(int address, int value);
     void sendCommandsToSerialPort(const QStringList &commands);
     void updateAvailablePorts();
     void on_brightnessHorizontalSlider_valueChanged(int value);
