@@ -2,7 +2,7 @@
 #define MAINWINDOW_H
 
 #include <QMainWindow>
-#include <QSerialPort>
+#include "boardwithleds.h"
 
 QT_BEGIN_NAMESPACE
 namespace Ui {
@@ -19,17 +19,19 @@ public:
     ~MainWindow();
 
 private slots:
-    QString createCommand(int address, int value);
-    void sendCommandsToSerialPort(const QStringList &commands);
-    void updateAvailablePorts();
     void on_brightnessHorizontalSlider_valueChanged(int value);
     void on_powerPushButton_toggled(bool checked);
     void on_selectColourPushButton_clicked();
-    void on_connectPushButton_clicked();
-    void updateControlLockState();
+    void updateControlLockState(bool isConnected);
+    void on_ledComboBox_currentTextChanged(const QString &arg1);
+    void handlePortsAvailable(bool available);
 
 private:
     Ui::MainWindow *ui;
-    QSerialPort *serialPort;
+    BoardWithLeds *board;
+    Led selectedLed;
+
+    void sendToOtherLeds(uint8_t value);
 };
+
 #endif // MAINWINDOW_H

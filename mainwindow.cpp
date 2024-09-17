@@ -1,197 +1,168 @@
 #include "mainwindow.h"
 #include "ui_mainwindow.h"
-#include <QDebug>
 #include <QSerialPortInfo>
-#include <QSerialPort>
-#include <QString>
-#include <QComboBox>
 #include <QTimer>
 #include <QColorDialog>
-#include <QIcon>
-#include <QPixmap>
-#include <QPainter>
+#include <QDebug>
 
-// Constructor
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
     , ui(new Ui::MainWindow)
+    , board(new BoardWithLeds(Led::Led1))
+    , selectedLed(Led::Led1)
 {
     ui->setupUi(this);
     setWindowTitle("LED Colour Adjuster");
 
-    serialPort = new QSerialPort(this);
+    ui->portControlWidget->setBoard(board);
 
-    // Timer to update available COM ports every second
-    QTimer *timer = new QTimer(this);
-    connect(timer, &QTimer::timeout, this, &MainWindow::updateAvailablePorts);
-    timer->start(1000);
+    // Update control lock state based on connection status
+    connect(ui->portControlWidget, &PortControlWidget::connectionStatusChanged, this, [this](bool isConnected) {
+        updateControlLockState(isConnected);
+        qDebug() << "PortControlWidget connection status changed:" << isConnected;
+    });
 
-    updateControlLockState();
+    // Handle COM port availability
+    connect(ui->portControlWidget, &PortControlWidget::portsAvailable, this, &MainWindow::handlePortsAvailable);
+
+    updateControlLockState(false);  // Initially disconnected
 }
 
-// Destructor
 MainWindow::~MainWindow()
 {
     delete ui;
+    delete board;
 }
 
-// Create command for serial communication
-QString MainWindow::createCommand(int address, int value)
+// Utility function to update control state based on connection status
+void MainWindow::updateControlLockState(bool isConnected)
 {
-    return QString("S 10 %1 %2 P").arg(address, 0, 16).arg(value, 0, 16);  // Address is now an int
+    ui->selectColourPushButton->setEnabled(isConnected);
+    ui->powerPushButton->setEnabled(isConnected);
+    ui->brightnessHorizontalSlider->setEnabled(isConnected);
+    ui->ledComboBox->setEnabled(!isConnected);
+
 }
 
-// Send list of commands to serial port
-void MainWindow::sendCommandsToSerialPort(const QStringList &commands)
+// Helper function to send "0x00" to other LEDs
+void MainWindow::sendToOtherLeds(uint8_t value)
 {
-    if (serialPort->isOpen()) {
-        for (const QString &command : commands) {
-            serialPort->write(command.toUtf8());
-            serialPort->waitForBytesWritten(1000);  // Wait for data to be written
-        }
-    } else {
-        qDebug() << "Serial port is not open.";
-    }
-}
+    for (int i = static_cast<int>(Led::Led1); i <= static_cast<int>(Led::Led4); ++i) {
+        if (i != static_cast<int>(selectedLed)) {
+            LedInfo otherLedInfo = LedFactory::createLed(static_cast<Led>(i));
 
-// Update available COM ports
-void MainWindow::updateAvailablePorts()
-{
-    QSet<QString> currentPorts;
-    const auto infos = QSerialPortInfo::availablePorts();
-
-    for (const QSerialPortInfo &info : infos) {
-        currentPorts.insert(info.portName());
-    }
-
-    QString selectedPort = ui->serialPortComboBox->currentText();
-    ui->serialPortComboBox->clear();
-
-    if (currentPorts.isEmpty()) {
-        ui->connectPushButton->setEnabled(false);
-        ui->connectPushButton->setText("No COM Port Available");
-    } else {
-        ui->connectPushButton->setEnabled(true);
-        if (!ui->connectPushButton->isChecked()) {
-            ui->connectPushButton->setText("Connect");
-        }
-
-        for (const QString &portName : currentPorts) {
-            ui->serialPortComboBox->addItem(portName);
-        }
-
-        int index = ui->serialPortComboBox->findText(selectedPort);
-        if (index != -1) {
-            ui->serialPortComboBox->setCurrentIndex(index);
+            board->sendCommand(otherLedInfo.connectionForRedAddr, value);
+            board->sendCommand(otherLedInfo.connectionForGreenAddr, value);
+            board->sendCommand(otherLedInfo.connectionForBlueAddr, value);
         }
     }
 }
 
-// Brightness slider value changed
+// Handle COM port availability
+void MainWindow::handlePortsAvailable(bool available)
+{
+    if (!board->isConnected()) {
+        ui->ledComboBox->setEnabled(available);
+    }
+}
+// Slot: Brightness slider value changed
 void MainWindow::on_brightnessHorizontalSlider_valueChanged(int value)
 {
-    int step = 50;
+    int step = 5;
     int newValue = (value / step) * step;
     ui->brightnessHorizontalSlider->setValue(newValue);
 
-    QStringList commands;
-    switch (newValue) {
-    case 0:
-        commands = {createCommand(0xAF, 0xFF), createCommand(0xAA, 0xFF), createCommand(0xB3, 0xFF)};
-        break;
-    case 50:
-        commands = {createCommand(0xAF, 0x8), createCommand(0xAA, 0x8), createCommand(0xB3, 0x8)};
-        break;
-    case 100:
-        commands = {createCommand(0xAF, 0), createCommand(0xAA, 0), createCommand(0xB3, 0)};
-        break;
-    default:
-        qDebug() << "Unsupported value.";
-        return;
-    }
+    int green_value = 4 + (newValue / step);
+    int blue_value = green_value;
+    int red_value = green_value - 3;
 
-    sendCommandsToSerialPort(commands);
+    // Clamp values within the valid range
+    green_value = qMax(green_value, 4);
+    red_value = qMax(red_value, 1);
+
+    qDebug() << "green:" << green_value << "red:" << red_value << "blue:" << blue_value;
+
+    LedInfo ledInfo = LedFactory::createLed(selectedLed);
+
+    // Send brightness values to the PWM addresses
+    board->sendCommand(ledInfo.pwmForRedAddr, red_value);
+    board->sendCommand(ledInfo.pwmForGreenAddr, green_value);
+    board->sendCommand(ledInfo.pwmForBlueAddr, blue_value);
+
+    // Turn off other LEDs
+    sendToOtherLeds(0x00);
 }
 
-// Power button toggled
+// Slot: Power button toggled
 void MainWindow::on_powerPushButton_toggled(bool checked)
 {
-    QStringList commands = checked
-                               ? QStringList{
-                                   createCommand(0x37, 0x10), createCommand(0x38, 0xFE), createCommand(0x39, 0x9D),
-                                   createCommand(0x3A, 0x08), createCommand(0xAF, 0x0), createCommand(0xAA, 0x0), createCommand(0xB3, 0x0)
-                               }
-                               : QStringList{
-                                   createCommand(0x37, 0x0), createCommand(0x38, 0x0), createCommand(0x39, 0x0), createCommand(0x3A, 0x0)
-                               };
+    LedInfo ledInfo = LedFactory::createLed(Led::Led1);
+
+    // Set LED color based on power button state
+    if (checked) {
+        board->sendCommand(ledInfo.pwmForRedAddr, 0xFF);
+        board->sendCommand(ledInfo.pwmForGreenAddr, 0xFB);
+        board->sendCommand(ledInfo.pwmForBlueAddr, 0xFF);
+    } else {
+        board->sendCommand(ledInfo.pwmForRedAddr, 0x0);
+        board->sendCommand(ledInfo.pwmForGreenAddr, 0x0);
+        board->sendCommand(ledInfo.pwmForBlueAddr, 0x0);
+    }
 
     ui->powerPushButton->setText(checked ? "OFF" : "ON");
-    sendCommandsToSerialPort(commands);
+
+    // Turn off other LEDs
+    sendToOtherLeds(0x00);
 }
 
-// Colour selection button clicked
+// Slot: Color selection button clicked
 void MainWindow::on_selectColourPushButton_clicked()
 {
     QColor color = QColorDialog::getColor(Qt::white, this, "Select Color");
     if (!color.isValid()) return;
 
+    // Update UI to reflect the selected color
     ui->colourLabel->setStyleSheet("background-color: " + color.name());
     ui->colourLabel->update();
 
-    int red_value = (255 - color.red()) / 15;
-    int green_value = (255 - color.green()) / 15;
-    int blue_value = (255 - color.blue()) / 15;
+    // Convert RGB to PWM values and send to the hardware
+    int red_value = color.red() / 15;
+    int green_value = color.green() / 15;
+    int blue_value = color.blue() / 15;
 
     qDebug() << "Red Value:" << red_value << "Green Value:" << green_value << "Blue Value:" << blue_value;
 
-    QStringList commands = {
-        createCommand(0xAF, red_value),
-        createCommand(0xAA, green_value),
-        createCommand(0xB3, blue_value)
-    };
+    LedInfo ledInfo = LedFactory::createLed(selectedLed);
+    board->sendCommand(ledInfo.pwmForRedAddr, red_value);
+    board->sendCommand(ledInfo.pwmForGreenAddr, green_value);
+    board->sendCommand(ledInfo.pwmForBlueAddr, blue_value);
 
-    sendCommandsToSerialPort(commands);
+    // Turn off other LEDs
+    sendToOtherLeds(0x00);
 }
 
-// Connect/Disconnect button clicked
-void MainWindow::on_connectPushButton_clicked()
+// Slot: LED ComboBox text changed
+void MainWindow::on_ledComboBox_currentTextChanged(const QString &arg1)
 {
-    if (!serialPort->isOpen()) {
-        QString selectedPort = ui->serialPortComboBox->currentText();
-        if (selectedPort.isEmpty()) {
-            qDebug() << "No COM port selected.";
-            return;
-        }
-
-        serialPort->setPortName(selectedPort);
-        if (serialPort->open(QIODevice::ReadWrite)) {
-            qDebug() << "Connected to" << selectedPort;
-            ui->connectPushButton->setText("Disconnect");
-            ui->connectPushButton->setChecked(true);
-        } else {
-            qDebug() << "Failed to open COM port.";
-            ui->connectPushButton->setChecked(false);
-        }
-    } else {
-        serialPort->close();
-        qDebug() << "Disconnected from COM port.";
-        ui->connectPushButton->setText("Connect");
-        ui->connectPushButton->setChecked(false);
+    if (board) {
+        delete board;
+        board = nullptr;
     }
 
-    updateControlLockState();
-}
+    // Select the correct LED based on the ComboBox value
+    if (arg1 == "Led1") {
+        selectedLed = Led::Led1;
+    } else if (arg1 == "Led2") {
+        selectedLed = Led::Led2;
+    } else if (arg1 == "Led3") {
+        selectedLed = Led::Led3;
+    } else if (arg1 == "Led4") {
+        selectedLed = Led::Led4;
+    }
 
-// Update the state of controls based on connection status
-void MainWindow::updateControlLockState()
-{
-    bool isConnected = serialPort->isOpen();
+    // Instantiate new board for selected LED and update PortControlWidget
+    board = new BoardWithLeds(selectedLed);
+    ui->portControlWidget->setBoard(board);
 
-    // Lock/unlock the controls based on connection status
-    ui->selectColourPushButton->setEnabled(isConnected);
-    ui->powerPushButton->setEnabled(isConnected);
-    ui->brightnessHorizontalSlider->setEnabled(isConnected);
-
-    // Lock the port selection when connected
-    ui->serialPortComboBox->setEnabled(!isConnected);
+    qDebug() << "Selected LED changed to:" << arg1;
 }
