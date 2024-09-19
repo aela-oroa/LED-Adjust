@@ -17,6 +17,8 @@ PortControlWidget::PortControlWidget(QWidget *parent)
     QTimer *timer = new QTimer(this);
     connect(timer, &QTimer::timeout, this, &PortControlWidget::updateAvailablePorts);
     timer->start(1000);
+
+    connect(ui->connectWidget, &QPushButton::clicked, this, &PortControlWidget::onConnectWidgetClicked);
 }
 
 PortControlWidget::~PortControlWidget()
@@ -63,7 +65,7 @@ void PortControlWidget::updateAvailablePorts()
     }
 }
 
-void PortControlWidget::on_connectWidget_clicked()
+void PortControlWidget::onConnectWidgetClicked()
 {
     if (!board->isConnected()) {
         QString selectedPort = ui->serialPortWidget->currentText();
@@ -86,6 +88,8 @@ void PortControlWidget::on_connectWidget_clicked()
             qDebug() << "Failed to connect";
         }
     } else {
+        resetLedStates();
+
         board->disconnect();
         ui->connectWidget->setText("Connect");
         ui->connectWidget->setChecked(false);
@@ -95,6 +99,25 @@ void PortControlWidget::on_connectWidget_clicked()
     }
 
     updateStatusLabel();
+}
+
+void PortControlWidget::resetLedStates()
+{
+    const std::vector<std::vector<int>> commands = {
+        {0xFE, 0x61, -1},    // LED1
+        {0x86, -1, 0xE5},    // LED2
+        {0xE3, 0xFE, 0xE5},  // LED3
+        {0xFE, 0xE1, 0xFE}   // LED4
+    };
+
+    for (int i = static_cast<int>(Led::Led1); i <= static_cast<int>(Led::Led4); ++i) {
+        LedInfo ledInfo = LedFactory::createLed(static_cast<Led>(i));
+        const auto &cmds = commands[i];
+
+        board->sendCommand(ledInfo.connectionForRedAddr, cmds[0]);
+        board->sendCommand(ledInfo.connectionForGreenAddr, cmds[1]);
+        board->sendCommand(ledInfo.connectionForBlueAddr, cmds[2]);
+    }
 }
 
 void PortControlWidget::updateStatusLabel()

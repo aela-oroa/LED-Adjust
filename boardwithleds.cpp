@@ -17,6 +17,13 @@ BoardWithLeds::~BoardWithLeds()
     delete serialPort;
 }
 
+// Set the LED to control
+void BoardWithLeds::setLed(Led led)
+{
+    ledInfo = LedFactory::createLed(led);
+    qDebug() << "BoardWithLeds switched to control LED:" << static_cast<int>(led);
+}
+
 // Set the name of the COM port
 void BoardWithLeds::setPortName(const QString &portName)
 {

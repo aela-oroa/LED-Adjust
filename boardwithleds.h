@@ -8,9 +8,10 @@
 class BoardWithLeds
 {
 public:
-    BoardWithLeds(Led led);
+    explicit BoardWithLeds(Led led);
     ~BoardWithLeds();
 
+    void setLed(Led led);
     void setPortName(const QString &portName);
     bool connect();
     void disconnect();

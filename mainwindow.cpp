@@ -8,13 +8,13 @@
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
     , ui(new Ui::MainWindow)
-    , board(new BoardWithLeds(Led::Led1))
+    , board(Led::Led1)
     , selectedLed(Led::Led1)
 {
     ui->setupUi(this);
     setWindowTitle("LED Colour Adjuster");
 
-    ui->portControlWidget->setBoard(board);
+    ui->portControlWidget->setBoard(&board);
 
     // Update control lock state based on connection status
     connect(ui->portControlWidget, &PortControlWidget::connectionStatusChanged, this, [this](bool isConnected) {
@@ -25,13 +25,18 @@ MainWindow::MainWindow(QWidget *parent)
     // Handle COM port availability
     connect(ui->portControlWidget, &PortControlWidget::portsAvailable, this, &MainWindow::handlePortsAvailable);
 
+    connect(ui->brightnessHorizontalSlider, &QSlider::valueChanged, this, &MainWindow::onBrightnessHorizontalSliderValueChanged);
+    connect(ui->powerPushButton, &QPushButton::toggled, this, &MainWindow::onPowerPushButtonToggled);
+    connect(ui->selectColourPushButton, &QPushButton::clicked, this, &MainWindow::onSelectColourPushButtonClicked);
+    connect(ui->ledComboBox, &QComboBox::currentTextChanged, this, &MainWindow::onLedComboBoxCurrentTextChanged);
+
     updateControlLockState(false);  // Initially disconnected
 }
 
 MainWindow::~MainWindow()
 {
     delete ui;
-    delete board;
+    // delete board;
 }
 
 // Utility function to update control state based on connection status
@@ -51,9 +56,9 @@ void MainWindow::sendToOtherLeds(uint8_t value)
         if (i != static_cast<int>(selectedLed)) {
             LedInfo otherLedInfo = LedFactory::createLed(static_cast<Led>(i));
 
-            board->sendCommand(otherLedInfo.connectionForRedAddr, value);
-            board->sendCommand(otherLedInfo.connectionForGreenAddr, value);
-            board->sendCommand(otherLedInfo.connectionForBlueAddr, value);
+            board.sendCommand(otherLedInfo.connectionForRedAddr, value);
+            board.sendCommand(otherLedInfo.connectionForGreenAddr, value);
+            board.sendCommand(otherLedInfo.connectionForBlueAddr, value);
         }
     }
 }
@@ -61,52 +66,52 @@ void MainWindow::sendToOtherLeds(uint8_t value)
 // Handle COM port availability
 void MainWindow::handlePortsAvailable(bool available)
 {
-    if (!board->isConnected()) {
+    if (!board.isConnected()) {
         ui->ledComboBox->setEnabled(available);
     }
 }
 // Slot: Brightness slider value changed
-void MainWindow::on_brightnessHorizontalSlider_valueChanged(int value)
+void MainWindow::onBrightnessHorizontalSliderValueChanged(int value)
 {
     int step = 5;
     int newValue = (value / step) * step;
     ui->brightnessHorizontalSlider->setValue(newValue);
 
-    int green_value = 4 + (newValue / step);
-    int blue_value = green_value;
-    int red_value = green_value - 3;
+    int greenValue = 4 + (newValue / step);
+    int blueValue = greenValue;
+    int redValue = greenValue - 3;
 
     // Clamp values within the valid range
-    green_value = qMax(green_value, 4);
-    red_value = qMax(red_value, 1);
+    greenValue = qMax(greenValue, 4);
+    redValue = qMax(redValue, 1);
 
-    qDebug() << "green:" << green_value << "red:" << red_value << "blue:" << blue_value;
+    qDebug() << "green:" << greenValue << "red:" << redValue << "blue:" << blueValue;
 
     LedInfo ledInfo = LedFactory::createLed(selectedLed);
 
     // Send brightness values to the PWM addresses
-    board->sendCommand(ledInfo.pwmForRedAddr, red_value);
-    board->sendCommand(ledInfo.pwmForGreenAddr, green_value);
-    board->sendCommand(ledInfo.pwmForBlueAddr, blue_value);
+    board.sendCommand(ledInfo.pwmForRedAddr, redValue);
+    board.sendCommand(ledInfo.pwmForGreenAddr, greenValue);
+    board.sendCommand(ledInfo.pwmForBlueAddr, blueValue);
 
     // Turn off other LEDs
     sendToOtherLeds(0x00);
 }
 
 // Slot: Power button toggled
-void MainWindow::on_powerPushButton_toggled(bool checked)
+void MainWindow::onPowerPushButtonToggled(bool checked)
 {
     LedInfo ledInfo = LedFactory::createLed(Led::Led1);
 
     // Set LED color based on power button state
     if (checked) {
-        board->sendCommand(ledInfo.pwmForRedAddr, 0xFF);
-        board->sendCommand(ledInfo.pwmForGreenAddr, 0xFB);
-        board->sendCommand(ledInfo.pwmForBlueAddr, 0xFF);
+        board.sendCommand(ledInfo.pwmForRedAddr, 0xFF);
+        board.sendCommand(ledInfo.pwmForGreenAddr, 0xFB);
+        board.sendCommand(ledInfo.pwmForBlueAddr, 0xFF);
     } else {
-        board->sendCommand(ledInfo.pwmForRedAddr, 0x0);
-        board->sendCommand(ledInfo.pwmForGreenAddr, 0x0);
-        board->sendCommand(ledInfo.pwmForBlueAddr, 0x0);
+        board.sendCommand(ledInfo.pwmForRedAddr, 0x0);
+        board.sendCommand(ledInfo.pwmForGreenAddr, 0x0);
+        board.sendCommand(ledInfo.pwmForBlueAddr, 0x0);
     }
 
     ui->powerPushButton->setText(checked ? "OFF" : "ON");
@@ -116,7 +121,7 @@ void MainWindow::on_powerPushButton_toggled(bool checked)
 }
 
 // Slot: Color selection button clicked
-void MainWindow::on_selectColourPushButton_clicked()
+void MainWindow::onSelectColourPushButtonClicked()
 {
     QColor color = QColorDialog::getColor(Qt::white, this, "Select Color");
     if (!color.isValid()) return;
@@ -126,29 +131,24 @@ void MainWindow::on_selectColourPushButton_clicked()
     ui->colourLabel->update();
 
     // Convert RGB to PWM values and send to the hardware
-    int red_value = color.red() / 15;
-    int green_value = color.green() / 15;
-    int blue_value = color.blue() / 15;
+    int redValue = color.red() / 15;
+    int greenValue = color.green() / 15;
+    int blueValue = color.blue() / 15;
 
-    qDebug() << "Red Value:" << red_value << "Green Value:" << green_value << "Blue Value:" << blue_value;
+    qDebug() << "Red Value:" << redValue << "Green Value:" << greenValue << "Blue Value:" << blueValue;
 
     LedInfo ledInfo = LedFactory::createLed(selectedLed);
-    board->sendCommand(ledInfo.pwmForRedAddr, red_value);
-    board->sendCommand(ledInfo.pwmForGreenAddr, green_value);
-    board->sendCommand(ledInfo.pwmForBlueAddr, blue_value);
+    board.sendCommand(ledInfo.pwmForRedAddr, redValue);
+    board.sendCommand(ledInfo.pwmForGreenAddr, greenValue);
+    board.sendCommand(ledInfo.pwmForBlueAddr, blueValue);
 
     // Turn off other LEDs
     sendToOtherLeds(0x00);
 }
 
 // Slot: LED ComboBox text changed
-void MainWindow::on_ledComboBox_currentTextChanged(const QString &arg1)
+void MainWindow::onLedComboBoxCurrentTextChanged(const QString &arg1)
 {
-    if (board) {
-        delete board;
-        board = nullptr;
-    }
-
     // Select the correct LED based on the ComboBox value
     if (arg1 == "Led1") {
         selectedLed = Led::Led1;
@@ -160,9 +160,7 @@ void MainWindow::on_ledComboBox_currentTextChanged(const QString &arg1)
         selectedLed = Led::Led4;
     }
 
-    // Instantiate new board for selected LED and update PortControlWidget
-    board = new BoardWithLeds(selectedLed);
-    ui->portControlWidget->setBoard(board);
-
+    // Update the existing board object to use the new LED
+    board.setLed(selectedLed);
     qDebug() << "Selected LED changed to:" << arg1;
 }

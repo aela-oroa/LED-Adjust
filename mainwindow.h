@@ -19,16 +19,16 @@ public:
     ~MainWindow();
 
 private slots:
-    void on_brightnessHorizontalSlider_valueChanged(int value);
-    void on_powerPushButton_toggled(bool checked);
-    void on_selectColourPushButton_clicked();
+    void onBrightnessHorizontalSliderValueChanged(int value);
+    void onPowerPushButtonToggled(bool checked);
+    void onSelectColourPushButtonClicked();
     void updateControlLockState(bool isConnected);
-    void on_ledComboBox_currentTextChanged(const QString &arg1);
+    void onLedComboBoxCurrentTextChanged(const QString &arg1);
     void handlePortsAvailable(bool available);
 
 private:
     Ui::MainWindow *ui;
-    BoardWithLeds *board;
+    BoardWithLeds board;
     Led selectedLed;
 
     void sendToOtherLeds(uint8_t value);

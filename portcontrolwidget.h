@@ -27,12 +27,14 @@ signals:
     void portsAvailable(bool available);
 
 private slots:
-    void on_connectWidget_clicked();
+    void onConnectWidgetClicked();
     void updateStatusLabel();
 
 private:
     Ui::PortControlWidget *ui;
     BoardWithLeds *board;
+
+    void resetLedStates();
 };
 
 #endif // PORTCONTROLWIDGET_H
